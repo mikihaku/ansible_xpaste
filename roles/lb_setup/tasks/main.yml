@@ -1,0 +1,10 @@
+---
+- name: Apply load balancer config
+  template:
+    src: "nginx.j2"
+    dest: "{{ nginx_conf_file_path }}" # Reusing vars and handlers from the previous role
+    owner: root
+    group: "{{ root_group }}" # Reusing vars and handlers from the previous role
+    mode: 0644
+  notify:
+    - reload nginx # Reusing vars and handlers from the previous role

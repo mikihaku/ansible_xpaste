@@ -1,0 +1,85 @@
+---
+# Install PostgreSQL server and configure it
+- name: "Enable EPEL release"
+  ansible.builtin.yum:
+    name:
+      - epel-release
+    state: latest
+
+- name: "Install PostgreSQL packages"
+  ansible.builtin.yum:
+    name:
+      - postgresql
+      - postgresql-server
+      - postgresql-contrib
+      - postgresql-libs
+      # - postgresql-devel
+      # - python-devel
+      - python-pip
+    state: latest
+
+# - name: "Upgrade PIP"
+#   ansible.builtin.pip:
+#     name: pip
+#     state: latest
+
+- name: "Install psycopg python package"
+  ansible.builtin.pip:
+    name: psycopg2-binary
+    version: 2.8
+    state: present
+  environment:
+    # PATH: $PATH:/usr/bin
+
+- name: "Find out if PostgreSQL is initialized"
+  ansible.builtin.stat:
+    path: "/var/lib/pgsql/data/pg_hba.conf"
+  register: postgres_data
+
+- name: "Initialize PostgreSQL"
+  ansible.builtin.shell: "postgresql-setup initdb"
+  when: not postgres_data.stat.exists
+
+- name: "Start and enable services"
+  ansible.builtin.service:
+    name: postgresql
+    state: "started"
+    enabled: yes
+
+# Create database
+- name: "Create app database"
+  community.general.postgresql_db:
+    state: present
+    name: "{{ db_name }}"
+  become: yes
+  become_user: postgres
+
+- name: "Create db user"
+  community.general.postgresql_user:
+    state: present
+    name: "{{ db_user }}"
+    password: "{{ db_password }}"
+  become: yes
+  become_user: postgres
+
+- name: "Grant db user access to app db"
+  community.general.postgresql_privs:
+    type: database
+    database: "{{ db_name }}"
+    roles: "{{ db_user }}"
+    grant_option: no
+    privs: all
+  become: yes
+  become_user: postgres
+
+- name: "Allow md5 connection for the db user"
+  community.general.postgresql_pg_hba:
+    dest: "~/data/pg_hba.conf"
+    contype: host
+    databases: all
+    method: md5
+    users: "{{ db_user }}"
+    create: true
+  become: yes
+  become_user: postgres
+  notify: restart postgres

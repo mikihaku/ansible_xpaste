@@ -1,0 +1,34 @@
+---
+- name: Install NGINX as load balancer
+  hosts: load_balancers
+  become: true
+  roles:
+    - geerlingguy.nginx # Install nginx
+    - lb_setup # Apply load balancer configuration
+
+- name: "Install PostgreSQL"
+  hosts: databases
+  become: true
+  roles: 
+    - postresql_setup
+    
+
+- name: "Install Ruby environment"
+  hosts: app_nodes
+  become: true
+  roles:
+    - zzet.rbenv # Install Ruby
+  tags:
+  - ruby  
+
+- name: "Deploy the XPASTE app"
+  hosts: app_nodes
+  become: true
+  vars:
+    app_path: /app
+  environment:
+    PATH: /usr/local/rbenv/shims:/usr/local/rbenv/bin:{{ ansible_env.PATH }}
+  roles:
+    - xpaste_deploy # Deploy the application
+  tags:
+  - deploy  

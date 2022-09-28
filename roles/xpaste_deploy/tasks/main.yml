@@ -1,0 +1,132 @@
+---
+- name: "Enable EPEL release for NodeJS" # Needed if we skip the previous roles
+  ansible.builtin.yum:
+    name:
+      - epel-release
+    state: latest
+
+- name: "Install XPASTE dependencies"
+  ansible.builtin.yum: 
+    name: 
+      - "@development-tools"
+      - libxml2-devel
+      - python-devel 
+      - postgresql-devel
+      - nodejs
+      - libxslt
+      - libxslt-devel
+    state: latest 
+    update_cache: yes
+
+- name: "Get ruby version" 
+  ansible.builtin.shell: ruby --version
+  register: ruby_ver
+
+- name: "Show ruby version"
+  ansible.builtin.debug:
+    msg: "Ruby version: {{ ruby_ver.stdout }}"
+
+# Copy app to the server
+- name: "Check that the /app folder exists"
+  ansible.builtin.stat:
+      path: /app
+  register: app_stat_result
+
+- name: "Create app folder"
+  ansible.builtin.file:
+      path: /app
+      owner: root
+      group: root
+      mode: '0644'
+      state: directory
+  when: not app_stat_result.stat.exists
+
+- name: "Create temporary copy folder"
+  ansible.builtin.file:
+      path: /temp/app
+      owner: ansible
+      group: ansible
+      mode: '0644' 
+      state: directory
+  when: not app_stat_result.stat.exists
+
+- name: "Unpack and copy file to the remote machine"
+  ansible.builtin.unarchive:
+    src: xpaste_practicum-master.tar
+    dest: /temp/app
+    owner: root
+    group: root
+    mode: '0644'
+  when: not app_stat_result.stat.exists
+
+- name: "Move app to the working directory"
+  ansible.builtin.copy:
+    src: /temp/app/xpaste_practicum-master/
+    dest: /app/
+    owner: root
+    group: root
+    mode: '644' 
+    remote_src: yes
+  when: not app_stat_result.stat.exists
+
+# Start the app
+- name: "Install dependencies step 1"
+  ansible.builtin.shell: "bundle config build.nokogiri --use-system-libraries"
+  args:
+    chdir: /app
+
+- name: "Install dependencies step 2"
+  ansible.builtin.shell: "bundle install --clean --no-cache --without development"
+  args:
+    chdir: /app
+  ignore_errors: yes
+
+- name: "Get bundle executable path"
+  ansible.builtin.shell: which bundle
+  register: bundle_path
+
+- name: "Show bundle path"
+  ansible.builtin.debug:
+    msg: "Bundle path: {{ bundle_path.stdout }}"
+
+- name: Include database configuration vars
+  ansible.builtin.include_vars: ../postresql_setup/vars/main.yml
+
+- name: "Create XPASTE service env file"
+  template:
+    src: "env.j2"
+    dest: "{{ app_path }}/env_start.sh" 
+    owner: root
+    group: root 
+    mode: a+x
+
+- name: "Create XPASTE service file"
+  template:
+    src: "service.j2"
+    dest: "/etc/systemd/system/xpaste.service" 
+    owner: root
+    group: root 
+    mode: 0664
+
+- name: "Start XPASTE service"
+  ansible.builtin.service:
+    name: xpaste
+    state: started
+
+- name: "Allow NGINX to work in SELinux env"
+  ansible.builtin.shell: semanage permissive -a httpd_t
+
+# - name: "Enable XPASTE service"
+
+# - name: "Modify SELinux policies"
+# sudo setsebool -P httpd_read_user_content 1
+
+# touch /etc/systemd/system/xpaste.service
+# chmod 664 /etc/systemd/system/xpaste.service
+# systemctl start xpaste.service
+
+# curl localhost
+# grep nginx /var/log/audit/audit.log | audit2allow -M nginx
+# semodule -i nginx.pp
+
+# semanage permissive -a httpd_t
