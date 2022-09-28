@@ -3,6 +3,7 @@ Description=Some crazy application XPASTE
 
 [Service]
 Type=simple
+WorkingDirectory={{app_path}}
 ExecStart="{{app_path}}/env_start.sh"
 
 [Install]
